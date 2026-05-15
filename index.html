@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>리셀제로 - 공동구매 출고 전 리셀러 차단</title>
+  <meta name="description" content="자사몰·스마트스토어 주문서를 동시 업로드 → 구매자·수령인 이중 탐지 → 출고 전 취소 대상 추출">
+  <meta property="og:type"        content="website">
+  <meta property="og:url"         content="https://resellzero.com/">
+  <meta property="og:title"       content="리셀제로 - 출고 전 리셀러 차단 솔루션">
+  <meta property="og:description" content="공동구매 주문서 업로드 → 구매자·수령인 이중 탐지 → 취소 대상 즉시 추출">
+  <meta property="og:image"       content="og-image.png">
+  <meta property="og:locale"      content="ko_KR">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2306C791'><path d='M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z'/></svg>" type="image/svg+xml">
+  <meta name="naver-site-verification" content="ee18563cf5f26e0009eca0f44868ebd33ffed818" />
+  <meta name="google-site-verification" content="1ikhg2CPLHyFEwDzqBvVIGJuDFwLTC8aIDRsVkpq3gM" />
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-P3MNERP3J6"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-P3MNERP3J6');
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { primary: '#0A1121', accent: '#06C791' } } }
+    }
+  </script>
+  <style>
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .spin-slow { animation: spin-slow 8s linear infinite; }
+
+    /* 드롭존 hover */
+    .drop-zone { transition: all .2s; }
+    .drop-zone.drag-over { border-color: #06C791 !important; background: rgba(6,199,145,.06) !important; }
+
+    /* 입력 공통 */
+    .inp {
+      width:100%; padding:.65rem 1rem; font-size:.875rem;
+      border:1px solid #e2e8f0; border-radius:.75rem; outline:none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .inp:focus { border-color:#06C791; box-shadow:0 0 0 3px rgba(6,199,145,.15); }
+
+    /* BL·결과 스크롤 */
+    .tbl-scroll { max-height:480px; overflow-y:auto; }
+    .tbl-scroll::-webkit-scrollbar { width:4px; }
+    .tbl-scroll::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+
+    /* 취소 선택 행 강조 */
+    .row-cancel td { background:#fff1f2 !important; }
+    .row-cancel:hover td { background:#ffe4e6 !important; }
+
+    /* 토스트 */
+    #toast {
+      position:fixed; bottom:24px; left:50%;
+      transform:translateX(-50%) translateY(80px);
+      background:#0A1121; color:#fff;
+      padding:10px 22px; border-radius:14px;
+      font-size:.84rem; font-weight:600;
+      opacity:0; transition:all .3s; z-index:9999; white-space:nowrap;
+    }
+    #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+    html { scroll-behavior:smooth; }
+
+    /* OCR 미리보기 인라인 편집 */
+    .inp-sm {
+      width:100%; padding:.35rem .6rem; font-size:.8rem;
+      border:1px solid #e2e8f0; border-radius:.5rem; outline:none;
+    }
+    .inp-sm:focus { border-color:#06C791; box-shadow:0 0 0 2px rgba(6,199,145,.15); }
+
+    /* OCR 진행바 */
+    .ocr-bar-wrap { height:6px; background:#e2e8f0; border-radius:99px; overflow:hidden; }
+    .ocr-bar      { height:100%; background:#06C791; border-radius:99px; transition:width .3s; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
+
+<div id="toast"></div>
+
+<!-- ── 내비게이션 ── -->
+<nav class="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <!-- resellzero 로고 -->
+      <div class="flex items-center" style="line-height:1;">
+        <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:1.45rem;color:#0A1121;letter-spacing:-0.02em;">resell</span>
+        <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:1.45rem;color:#06C791;letter-spacing:-0.02em;">zer</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#06C791" style="margin-bottom:-1px;">
+          <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+        </svg>
+      </div>
+
+    </div>
+    <span id="navBLBadge" class="hidden text-xs font-bold bg-red-100 text-red-600 px-3 py-1.5 rounded-full">
+      블랙리스트 <span id="navBLCnt">0</span>명 등록
+    </span>
+  </div>
+</nav>
+
+<!-- ── 히어로 ── -->
+<header class="bg-white border-b border-gray-100">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 text-center">
+    <!-- 히어로 로고 -->
+    <div class="flex items-center justify-center mb-6" style="line-height:1;">
+      <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:3.2rem;color:#0A1121;letter-spacing:-0.03em;">resell</span>
+      <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:3.2rem;color:#06C791;letter-spacing:-0.03em;">zer</span>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="#06C791" style="margin-bottom:-2px;">
+        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+      </svg>
+    </div>
+    <div class="inline-flex items-center gap-2 bg-accent/10 text-accent px-4 py-1.5 rounded-full text-sm font-semibold mb-5">
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      공동구매 출고 전 리셀러 자동 탐지 솔루션
+    </div>
+    <h1 class="text-4xl sm:text-5xl font-extrabold text-primary leading-tight mb-4">
+      주문서 올리면,<br><span class="text-accent">리셀러만 골라냅니다.</span>
+    </h1>
+    <p class="text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed mb-8">
+      자사몰(카페24·아임웹) + 스마트스토어 주문서를 <strong class="text-gray-700">동시에</strong> 업로드하세요.<br>
+      <strong class="text-gray-700">구매자·수령인 이중 탐지</strong>로 채널 분산 리셀러도 잡아냅니다.
+    </p>
+    <div class="flex flex-wrap justify-center items-center gap-3 text-sm font-semibold">
+      <span class="bg-gray-100 text-gray-600 px-4 py-2 rounded-full">① 블랙리스트 등록</span>
+      <span class="text-gray-300 text-xl">›</span>
+      <span class="bg-gray-100 text-gray-600 px-4 py-2 rounded-full">② 이력 분석 (선택)</span>
+      <span class="text-gray-300 text-xl">›</span>
+      <span class="bg-gray-100 text-gray-600 px-4 py-2 rounded-full">③ 주문서 업로드</span>
+      <span class="text-gray-300 text-xl">›</span>
+      <span class="bg-accent/10 text-accent px-4 py-2 rounded-full">③ 취소 대상 즉시 추출</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── 메인 ── -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
+
+  <!-- ════ STEP 1: 블랙리스트 ════ -->
+  <section id="step1" class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+    <!-- 헤더 -->
+    <div class="flex items-center justify-between px-8 py-5 bg-gradient-to-r from-primary to-gray-700">
+      <div class="flex items-center gap-4">
+        <div class="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center font-extrabold text-accent text-lg">1</div>
+        <div>
+          <h2 class="text-lg font-extrabold text-white">블랙리스트 등록</h2>
+          <p class="text-gray-400 text-xs mt-0.5">새로고침해도 유지됩니다 (localStorage 영구 저장)</p>
+        </div>
+      </div>
+      <div class="text-right">
+        <div id="blCount" class="text-3xl font-extrabold text-accent">0</div>
+        <div class="text-xs text-gray-400 mt-0.5">등록된 고객</div>
+      </div>
+    </div>
+
+    <!-- 입력 영역 -->
+    <div class="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- 엑셀 업로드 -->
+      <div>
+        <h3 class="font-bold text-gray-700 mb-1">📂 엑셀 일괄 등록</h3>
+        <p class="text-xs text-gray-400 mb-4">
+          <code class="bg-gray-100 px-1 rounded">이름</code>·
+          <code class="bg-gray-100 px-1 rounded">연락처</code>·
+          <code class="bg-gray-100 px-1 rounded">주소</code>·
+          <code class="bg-gray-100 px-1 rounded">차단사유</code> 컬럼 자동 인식
+        </p>
+        <div id="blDrop" class="drop-zone border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center cursor-pointer hover:border-accent hover:bg-accent/5"
+          onclick="document.getElementById('blFile').click()"
+          ondragover="dragOver(event,'blDrop')" ondragleave="dragLeave('blDrop')" ondrop="onDrop(event,'bl')">
+          <svg class="h-10 w-10 text-gray-300 mx-auto mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <p class="text-sm font-semibold text-gray-600">클릭 또는 드래그</p>
+          <p class="text-xs text-gray-400 mt-1">.xlsx / .xls / .csv</p>
+          <input id="blFile" type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="loadBLFile(event.target.files[0])">
+        </div>
+        <p id="blMsg" class="hidden mt-2 text-xs text-accent bg-accent/5 border border-accent/20 rounded-xl px-3 py-2"></p>
+      </div>
+
+      <!-- 직접 입력 -->
+      <div>
+        <h3 class="font-bold text-gray-700 mb-4">✏️ 직접 입력</h3>
+        <!-- 수정 모드 안내 배너 (평소엔 숨김) -->
+        <div id="editModeBanner" class="hidden mb-3 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+          <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+          </svg>
+          <span class="text-xs font-semibold text-amber-700">수정 모드 — 내용 변경 후 저장하세요</span>
+          <button onclick="cancelEdit()" class="ml-auto text-xs text-gray-400 hover:text-red-500 transition-colors font-semibold">취소</button>
+        </div>
+        <div class="space-y-3">
+          <input id="inName"   type="text" class="inp" placeholder="이름 (구매자 or 수령인)">
+          <input id="inPhone"  type="tel"  class="inp" placeholder="연락처">
+          <input id="inAddr"   type="text" class="inp" placeholder="수령인 배송 주소">
+          <input id="inReason" type="text" class="inp" placeholder="차단 사유 (예: 반복 리셀)">
+          <button id="blSubmitBtn" onclick="addBLManual()"
+            class="w-full py-3 bg-primary hover:bg-opacity-90 active:scale-95 text-white text-sm font-bold rounded-xl transition-all">
+            + 블랙리스트에 추가
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 이미지 OCR 등록 ── -->
+    <div class="px-8 pb-8 border-t border-gray-100">
+      <div class="pt-6">
+        <h3 class="font-bold text-gray-700 mb-1 flex items-center gap-2">
+          📷 이미지로 등록
+          <span class="text-xs text-gray-400 font-normal">스크린샷·사진에서 이름·연락처 자동 추출</span>
+        </h3>
+        <p class="text-xs text-gray-400 mb-4">
+          이름과 전화번호가 포함된 이미지를 올리면 자동으로 인식합니다.
+          <strong class="text-gray-600">처음 실행 시 한국어 데이터 다운로드</strong>가 필요합니다 (약 10MB, 1회만).
+        </p>
+
+        <div id="ocrDrop" class="drop-zone border-2 border-dashed border-gray-200 rounded-2xl p-7 text-center cursor-pointer hover:border-accent hover:bg-accent/5"
+          onclick="document.getElementById('ocrFile').click()"
+          ondragover="dragOver(event,'ocrDrop')" ondragleave="dragLeave('ocrDrop')" ondrop="onDrop(event,'ocr')">
+          <svg class="h-9 w-9 text-gray-300 mx-auto mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <path d="M21 15l-5-5L5 21"/>
+          </svg>
+          <p class="text-sm font-semibold text-gray-600">이미지 클릭 또는 드래그</p>
+          <p class="text-xs text-gray-400 mt-1">PNG / JPG / WEBP · 스크린샷 가능</p>
+          <input id="ocrFile" type="file" accept="image/*" class="hidden" onchange="runOCR(event.target.files[0])">
+        </div>
+
+        <!-- OCR 진행 표시 -->
+        <div id="ocrLoading" class="hidden mt-4 space-y-2">
+          <div class="ocr-bar-wrap">
+            <div id="ocrBar" class="ocr-bar" style="width:0%"></div>
+          </div>
+          <p id="ocrStatus" class="text-xs text-gray-500 text-center">초기화 중...</p>
+        </div>
+
+        <!-- 추출 결과 미리보기 (편집 가능) -->
+        <div id="ocrPreview" class="hidden mt-5">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-sm font-bold text-gray-700">
+              추출된 정보 확인 <span id="ocrCountBadge" class="ml-1 text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full font-semibold"></span>
+            </h4>
+            <p class="text-xs text-gray-400">이름·연락처·주소를 직접 수정한 뒤 추가하세요</p>
+          </div>
+          <div class="rounded-xl border border-gray-100 overflow-hidden mb-4">
+            <table class="min-w-full text-sm">
+              <thead class="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide w-32">이름</th>
+                  <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide w-40">연락처</th>
+                  <th class="text-left px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">주소</th>
+                  <th class="w-10 px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody id="ocrBody"></tbody>
+            </table>
+          </div>
+          <div class="flex gap-3">
+            <button id="ocrConfirmBtn" onclick="confirmOCR()"
+              class="flex-1 py-2.5 bg-accent hover:bg-opacity-90 active:scale-95 text-white text-sm font-bold rounded-xl transition-all">
+              블랙리스트에 추가
+            </button>
+            <button onclick="cancelOCR()"
+              class="px-5 py-2.5 border border-gray-200 hover:border-red-300 text-gray-500 hover:text-red-500 text-sm font-medium rounded-xl transition-all">
+              취소
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BL 목록 -->
+    <div class="px-8 pb-8">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold text-gray-600">
+            등록된 블랙리스트
+            <span id="blListBadge" class="hidden ml-2 text-xs font-extrabold bg-red-100 text-red-500 px-2 py-0.5 rounded-full"></span>
+          </h3>
+        <button onclick="clearBL()" class="text-xs text-gray-400 hover:text-red-500 transition-colors">전체 초기화</button>
+      </div>
+      <div class="tbl-scroll rounded-xl border border-gray-100">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">이름</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">연락처</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">주소</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">사유</th>
+              <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide text-center">수정/삭제</th>
+            </tr>
+          </thead>
+          <tbody id="blBody">
+            <tr><td colspan="6" class="text-center py-8 text-sm text-gray-300">등록된 블랙리스트가 없습니다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ STEP 1.5: 주문 이력 분석 ════ -->
+  <section id="stepHistory" class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="flex items-center gap-4 px-8 py-5 bg-gradient-to-r from-indigo-600 to-indigo-400">
+      <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center font-extrabold text-white text-lg">1.5</div>
+      <div class="flex-1">
+        <h2 class="text-lg font-extrabold text-white">과거 주문 이력 분석 <span class="text-xs font-normal opacity-70 ml-1">선택사항</span></h2>
+        <p class="text-white/70 text-xs mt-0.5">과거 주문 파일을 올리면, 반복 주문자를 자동으로 요주의로 분류합니다.</p>
+      </div>
+      <div class="text-right flex-shrink-0">
+        <div id="historyCount" class="text-3xl font-extrabold text-white">0</div>
+        <div class="text-xs text-white/60 mt-0.5">요주의 번호</div>
+      </div>
+    </div>
+
+    <div class="p-8 space-y-5">
+      <!-- 기준 설정 + 상태 -->
+      <div class="flex flex-col sm:flex-row sm:items-center gap-4 bg-indigo-50 border border-indigo-100 rounded-2xl px-6 py-4">
+        <div class="flex-1">
+          <p class="text-sm font-bold text-indigo-800">📋 이력에서 N회 이상 주문한 번호 → 요주의 분류</p>
+          <p class="text-xs text-indigo-600 mt-0.5">과거 여러 공구에 걸쳐 반복 주문한 번호를 찾아냅니다. 파일을 여러 개 올리면 합산됩니다.</p>
+        </div>
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <label class="text-sm font-bold text-indigo-800 whitespace-nowrap">반복 기준:</label>
+          <input id="historyThreshold" type="number" value="3" min="2" max="99"
+            class="w-16 px-3 py-2 border border-indigo-200 rounded-xl text-center font-bold text-indigo-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm">
+          <span class="text-sm font-bold text-indigo-800 whitespace-nowrap">회 이상</span>
+          <button onclick="clearHistory()"
+            class="text-xs text-gray-400 hover:text-red-500 transition-colors font-semibold whitespace-nowrap">초기화</button>
+        </div>
+      </div>
+
+      <!-- 드롭존 -->
+      <div id="historyDrop"
+        class="drop-zone border-2 border-dashed border-indigo-200 rounded-2xl p-8 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40"
+        onclick="document.getElementById('historyFile').click()"
+        ondragover="dragOver(event,'historyDrop')" ondragleave="dragLeave('historyDrop')" ondrop="onDrop(event,'history')">
+        <svg class="h-9 w-9 text-indigo-300 mx-auto mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M12 8v8m0 0l-3-3m3 3l3-3M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1"/>
+        </svg>
+        <p class="text-sm font-semibold text-indigo-700">과거 주문 파일 드래그 또는 클릭</p>
+        <p class="text-xs text-indigo-400 mt-1">아임웹·카페24·스마트스토어 주문 내보내기 파일 (.xlsx / .xls / .csv)</p>
+        <p class="text-xs text-gray-400 mt-1">여러 파일 동시 업로드 가능 — 기간별로 나눠진 파일도 OK</p>
+        <input id="historyFile" type="file" accept=".xlsx,.xls,.csv" multiple class="hidden"
+          onchange="Array.from(event.target.files).forEach(loadHistoryFile)">
+      </div>
+
+      <!-- 업로드된 파일 목록 -->
+      <div id="historyFileList" class="hidden space-y-2">
+        <p class="text-xs font-bold text-gray-500 mb-1">📂 업로드된 이력 파일</p>
+        <div id="historyFileItems" class="space-y-1.5"></div>
+      </div>
+
+      <!-- 요주의 번호 요약 -->
+      <div id="historyResult" class="hidden bg-indigo-50 border border-indigo-100 rounded-2xl px-6 py-4">
+        <p class="text-sm font-bold text-indigo-800 mb-2">🔍 요주의 전화번호 <span id="historySuspectCount" class="text-indigo-600">0</span>개 발견</p>
+        <div id="historySuspectList" class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ STEP 2: 주문서 업로드 ════ -->
+  <section id="step2" class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+    <!-- 헤더 -->
+    <div class="flex items-center gap-4 px-8 py-5 bg-gradient-to-r from-accent to-emerald-400">
+      <div class="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center font-extrabold text-white text-lg">2</div>
+      <div>
+        <h2 class="text-lg font-extrabold text-white">주문서 업로드 + 스캔 설정</h2>
+        <p class="text-white/70 text-xs mt-0.5">자사몰(카페24·아임웹) + 스마트스토어 파일을 동시에 올리세요.</p>
+      </div>
+    </div>
+
+    <div class="p-8 space-y-6">
+
+      <!-- BL 상태 확인 카드 -->
+      <div id="blStatusCard" class="rounded-2xl px-6 py-4 flex items-center gap-4 border transition-all">
+        <div id="blStatusIcon" class="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0">✅</div>
+        <div class="flex-1 min-w-0">
+          <p id="blStatusTitle" class="font-bold text-sm"></p>
+          <p id="blStatusSub"   class="text-xs mt-0.5"></p>
+        </div>
+        <button id="blStatusBtn" onclick="document.getElementById('step1').scrollIntoView({behavior:'smooth'})"
+          class="hidden flex-shrink-0 text-xs font-bold px-4 py-2 rounded-xl transition-colors">
+          STEP 1로 이동 →
+        </button>
+      </div>
+
+      <!-- 대량 구매 기준 -->
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl px-6 py-5">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div class="flex-1">
+            <h3 class="font-bold text-amber-800 mb-1">📦 대량 구매 의심 기준</h3>
+            <p class="text-xs text-amber-700 leading-relaxed">
+              주문 수량이 기준 이상이면 <strong>리셀 의심 플래그</strong>가 달립니다.<br>
+              옵션이 2박스·4박스·6박스라면 <strong>4 이상</strong>으로 설정을 권장합니다.
+            </p>
+          </div>
+          <div class="flex items-center gap-3 flex-shrink-0">
+            <label class="text-sm font-bold text-amber-800 whitespace-nowrap">수량 기준:</label>
+            <input id="qtyThreshold" type="number" value="4" min="1" max="9999"
+              class="w-20 px-3 py-2.5 border border-amber-300 rounded-xl text-center font-bold text-amber-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 text-base">
+            <span class="text-sm font-bold text-amber-800 whitespace-nowrap">개 이상</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 타겟 옵션 키워드 -->
+      <div class="bg-rose-50 border border-rose-200 rounded-2xl px-6 py-5">
+        <div class="flex flex-col gap-3">
+          <div>
+            <h3 class="font-bold text-rose-800 mb-1">🎯 집중 감시 타겟 옵션 <span class="text-xs font-normal text-rose-500 ml-1">선택사항</span></h3>
+            <p class="text-xs text-rose-700 leading-relaxed">
+              감시할 옵션명을 쉼표로 구분해서 입력하세요.<br>
+              해당 옵션을 주문한 고객 중 <strong>동일 연락처 2건+</strong> 또는 <strong>동일 주소 다계정 2건+</strong>을 자동으로 탐지합니다.
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="targetKeywords" type="text"
+              placeholder="예: 6박스, 8박스, 대용량세트"
+              class="flex-1 px-4 py-2.5 border border-rose-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 text-gray-700 placeholder-rose-300">
+            <div id="targetKeywordBadges" class="flex flex-wrap gap-1.5"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 다채널 파일 업로드 -->
+      <div>
+        <div id="orderDrop" class="drop-zone border-2 border-dashed border-gray-200 rounded-2xl p-10 text-center cursor-pointer hover:border-accent hover:bg-accent/5"
+          onclick="document.getElementById('orderFiles').click()"
+          ondragover="dragOver(event,'orderDrop')" ondragleave="dragLeave('orderDrop')" ondrop="onDrop(event,'order')">
+          <svg class="h-14 w-14 text-gray-300 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <path d="M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+          <p class="text-lg font-semibold text-gray-700 mb-1">여러 파일을 한 번에 업로드</p>
+          <p class="text-sm text-gray-400 mb-6">자사몰 주문서 + 스마트스토어 주문서를 동시에 드래그하거나 클릭하세요</p>
+          <div class="flex flex-wrap justify-center gap-2 text-xs font-medium">
+            <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full">✅ 네이버 스마트스토어</span>
+            <span class="bg-purple-100 text-purple-700 px-3 py-1 rounded-full">✅ 카페24</span>
+            <span class="bg-pink-100 text-pink-700 px-3 py-1 rounded-full">✅ 아임웹</span>
+            <span class="bg-gray-100 text-gray-600 px-3 py-1 rounded-full">✅ 기타 자사몰</span>
+          </div>
+          <input id="orderFiles" type="file" accept=".xlsx,.xls,.csv" multiple class="hidden" onchange="onOrderFilesSelect(event)">
+        </div>
+
+        <!-- 업로드된 파일 칩 목록 -->
+        <div id="fileChips" class="hidden mt-4 flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- 스캔 버튼 -->
+      <div class="text-center space-y-3">
+        <button id="scanBtn" onclick="runScan()" disabled
+          class="px-14 py-4 bg-accent hover:bg-opacity-90 active:scale-95
+                 disabled:opacity-40 disabled:cursor-not-allowed
+                 text-white font-extrabold text-base rounded-full shadow-lg transition-all">
+          🔍 출고 전 리셀러 스캔 시작
+        </button>
+        <div id="scanLoading" class="hidden flex flex-col items-center gap-2 pt-2">
+          <svg class="h-7 w-7 text-accent spin-slow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="9"/>
+          </svg>
+          <p class="text-sm text-gray-400">다채널 주문 통합 분석 중... (O(N) 최적화)</p>
+        </div>
+        <p class="text-xs text-gray-400">🔒 모든 처리는 <strong>내 브라우저 안에서만</strong> 이루어집니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ STEP 3: 결과 ════ -->
+  <section id="resultSection" class="hidden bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+
+    <!-- 헤더 -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-8 py-5 border-b border-gray-100">
+      <div>
+        <h2 class="text-xl font-extrabold text-primary flex items-center gap-2">
+          🚨 출고 전 차단 대상
+          <span id="resultBadge" class="hidden text-sm font-bold bg-red-100 text-red-600 px-3 py-1 rounded-full"></span>
+        </h2>
+        <p id="resultDesc" class="text-xs text-gray-400 mt-1"></p>
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0 flex-wrap">
+        <select id="filterSel"
+          class="px-4 py-2.5 border border-gray-200 rounded-full text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent">
+          <option value="all">전체 의심 주문</option>
+          <option value="bl_buyer">🔴 BL 일치 — 구매자</option>
+          <option value="bl_recipient">🟠 BL 일치 — 수령인</option>
+          <option value="history">🔵 이력 요주의</option>
+          <option value="target_dup">🎯 타겟 옵션 중복 구매</option>
+          <option value="target_addr">🏭 다계정 창고 집결</option>
+          <option value="pattern">📊 패턴 탐지 (5건+)</option>
+          <option value="quantity">📦 수량 초과</option>
+        </select>
+        <button onclick="exportCancelList()"
+          class="flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 active:scale-95
+                 text-white text-sm font-semibold rounded-full transition-all shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h10l6 6v12a2 2 0 01-2 2z"/>
+          </svg>
+          취소 목록 내보내기
+        </button>
+      </div>
+    </div>
+
+    <!-- 통계 카드 -->
+    <div class="grid grid-cols-2 sm:grid-cols-7 gap-3 px-8 pt-6">
+      <div class="bg-gray-50 rounded-2xl p-4">
+        <p class="text-xs text-gray-400 mb-1">전체 주문</p>
+        <p id="stTotal" class="text-2xl font-extrabold text-primary">-</p>
+      </div>
+      <div class="bg-red-50 rounded-2xl p-4">
+        <p class="text-xs text-red-400 mb-1">BL 일치 (구매자)</p>
+        <p id="stBlBuyer" class="text-2xl font-extrabold text-red-600">-</p>
+      </div>
+      <div class="bg-orange-50 rounded-2xl p-4">
+        <p class="text-xs text-orange-400 mb-1">BL 일치 (수령인)</p>
+        <p id="stBlRecip" class="text-2xl font-extrabold text-orange-500">-</p>
+      </div>
+      <div class="bg-indigo-50 rounded-2xl p-4">
+        <p class="text-xs text-indigo-500 mb-1">이력 요주의</p>
+        <p id="stHistory" class="text-2xl font-extrabold text-indigo-600">-</p>
+      </div>
+      <div class="bg-rose-50 rounded-2xl p-4">
+        <p class="text-xs text-rose-500 mb-1">타겟 옵션 탐지</p>
+        <p id="stTarget" class="text-2xl font-extrabold text-rose-600">-</p>
+      </div>
+      <div class="bg-accent/10 rounded-2xl p-4">
+        <p class="text-xs text-accent mb-1">패턴 탐지 (5건+)</p>
+        <p id="stPat" class="text-2xl font-extrabold text-accent">-</p>
+      </div>
+      <div class="bg-amber-50 rounded-2xl p-4">
+        <p class="text-xs text-amber-500 mb-1">수량 초과</p>
+        <p id="stQty" class="text-2xl font-extrabold text-amber-600">-</p>
+      </div>
+    </div>
+
+    <!-- 전체 선택 바 -->
+    <div class="flex items-center gap-4 px-8 pt-5 pb-1">
+      <label class="flex items-center gap-2 text-sm font-semibold text-gray-600 cursor-pointer select-none">
+        <input type="checkbox" id="checkAll" onchange="toggleCheckAll(this.checked)"
+          class="w-4 h-4 rounded cursor-pointer" style="accent-color:#dc2626">
+        취소 대상 전체 선택
+      </label>
+      <span id="checkedCountTxt" class="text-xs text-red-500 font-semibold"></span>
+    </div>
+
+    <!-- 결과 테이블 -->
+    <div class="p-8">
+      <div class="overflow-x-auto rounded-2xl border border-gray-100">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th class="px-4 py-3.5 w-10 text-center">
+                <span class="text-xs text-gray-400 font-semibold">취소</span>
+              </th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">플랫폼</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">주문번호</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">구매자</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">구매자 연락처</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">수령인</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">수령인 연락처</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">수령인 주소</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">상품/옵션</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">수량</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">탐지 유형</th>
+              <th class="text-left px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">차단 사유</th>
+              <th class="px-4 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">BL 등록</th>
+            </tr>
+          </thead>
+          <tbody id="resultBody">
+            <tr>
+              <td colspan="13" class="py-20 text-center">
+                <p class="text-gray-300 font-semibold">스캔 결과가 여기에 표시됩니다.</p>
+                <p class="text-xs text-gray-300 mt-1">STEP 2에서 주문서를 업로드하세요.</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── 푸터 ── -->
+<footer class="bg-white border-t border-gray-100 py-10 mt-4 text-center">
+  <div class="max-w-7xl mx-auto px-4">
+    <p class="text-sm font-extrabold text-primary mb-1">ResellZero</p>
+    <p class="text-xs text-gray-400">공동구매 리셀러 출고 전 차단 솔루션 · 데이터 완전 로컬 처리</p>
+    <p class="text-xs text-gray-300 mt-2">&copy; 2026 ResellZero. All rights reserved.</p>
+  </div>
+</footer>
+
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   정규화 유틸
+══════════════════════════════════════════════════════════════ */
+const normPhone = s => String(s ?? '').replace(/[\s\-\(\)\.]/g, '');
+const normAddr  = s => {
+  const v = String(s ?? '').replace(/\s/g, '').toLowerCase();
+  /* 동호수 등 숫자 포함 + 최소 10자 이상인 주소만 유효하게 취급
+     ("서울시강남구" 같이 짧고 모호한 주소는 패턴 집계에서 제외) */
+  return (v.length >= 10 && /\d/.test(v)) ? v : '';
+};
+const esc       = s => String(s ?? '')
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+/* ══════════════════════════════════════════════════════════════
+   다채널 컬럼명 자동 매핑
+   pick(): 후보 키 중 처음 매칭되는 컬럼 값 반환
+   - 스마트스토어: 수취인명, 수취인연락처1, 배송지주소
+   - 자사몰 (카페24/아임웹): 수령인, 수령인번호, 수령인주소, 구매자, 구매자전화번호
+══════════════════════════════════════════════════════════════ */
+function pickCol(row, ...candidates) {
+  const keys = Object.keys(row);
+  for (const c of candidates) {
+    const cn = c.replace(/\s/g, '');
+    const k  = keys.find(k => String(k).replace(/\s/g,'').includes(cn));
+    if (k !== undefined) return String(row[k] ?? '').trim();
+  }
+  return '';
+}
+
+function detectPlatform(keys) {
+  const s = keys.join('');
+  if (s.includes('수취인'))  return '스마트스토어';
+  if (s.includes('수령자'))  return '아임웹';   // 아임웹: 수령자명, 수령자 전화번호
+  if (s.includes('수령인'))  return '자사몰';
+  return '기타';
+}
+
+function normalizeOrder(row, platform) {
+  // 주소: 전용 필드 우선 → 없으면 '주소'+'상세주소' 합산 (아임웹 분리 형식 대응)
+  let recipientAddress = pickCol(row,
+    '배송지주소','수령인주소','수령인 주소','배송주소','address');
+  if (!recipientAddress) {
+    const a1 = pickCol(row, '주소');
+    const a2 = pickCol(row, '상세주소','상세 주소');
+    recipientAddress = [a1, a2].filter(Boolean).join(' ').trim();
+  }
+  return {
+    platform,
+    orderId:     pickCol(row, '주문번호','주문No','주문코드','OrderNo','번호'),
+    productName: pickCol(row, '상품명','상품','품목명'),
+    option:      pickCol(row, '옵션정보','옵션명','옵션','선택옵션'),
+    quantity:    parseInt(pickCol(row,
+                   '구매수량','수량','주문수량','주문 수량','qty','quantity')) || 1,
+    // ── 구매자 (결제 계정) ──
+    buyerName:   pickCol(row,
+                   '구매자명','구매자','주문자명','주문자이름','주문자 이름','주문자','결제자'),
+    buyerPhone:  pickCol(row,
+                   '구매자연락처','구매자전화번호','구매자 전화번호',
+                   '주문자연락처','주문자전화번호','주문자번호','주문자 번호',
+                   '구매자휴대폰'),
+    // ── 수령인 (실제 배송 대상) ──
+    recipientName:  pickCol(row,
+                      '수취인명','수취인','수령자명','수령자','수령인','받는분','받는사람','수신인'),
+    recipientPhone: pickCol(row,
+                      '수취인연락처1','수취인연락처','수령자전화번호','수령자 전화번호',
+                      '수령자연락처','수령인번호','수령인 번호','수령인전화번호',
+                      '수령인휴대폰','받는분연락처'),
+    recipientAddress,
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════
+   블랙리스트 DB — localStorage 영구 저장
+   구조: [{ name, phone, address, reason }]
+══════════════════════════════════════════════════════════════ */
+const LS_KEY = 'resellzero_bl_v1';
+let BL = [];
+try { BL = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e) {}
+
+function saveBL()  { try { localStorage.setItem(LS_KEY, JSON.stringify(BL)); } catch(e) {} }
+
+function updateBLStatus() {
+  const card  = document.getElementById('blStatusCard');
+  const icon  = document.getElementById('blStatusIcon');
+  const title = document.getElementById('blStatusTitle');
+  const sub   = document.getElementById('blStatusSub');
+  const btn   = document.getElementById('blStatusBtn');
+  if (!card) return;
+  const n = BL.length;
+  if (n > 0) {
+    card.className  = 'rounded-2xl px-6 py-4 flex items-center gap-4 border transition-all bg-emerald-50 border-emerald-200';
+    icon.className  = 'w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0 bg-emerald-100';
+    icon.textContent = '✅';
+    title.className = 'font-bold text-sm text-emerald-800';
+    title.textContent = `블랙리스트 ${n}명 등록 완료 — 스캔 준비됐습니다`;
+    sub.className   = 'text-xs mt-0.5 text-emerald-600';
+    sub.textContent = '업로드한 주문서에서 등록된 고객과 일치하는 주문을 찾아냅니다.';
+    btn.classList.add('hidden');
+  } else {
+    card.className  = 'rounded-2xl px-6 py-4 flex items-center gap-4 border transition-all bg-orange-50 border-orange-200';
+    icon.className  = 'w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0 bg-orange-100';
+    icon.textContent = '⚠️';
+    title.className = 'font-bold text-sm text-orange-800';
+    title.textContent = '블랙리스트가 비어 있습니다';
+    sub.className   = 'text-xs mt-0.5 text-orange-600';
+    sub.textContent = 'STEP 1에서 블랙리스트를 먼저 등록하면 더 정확하게 리셀러를 탐지할 수 있습니다.';
+    btn.classList.remove('hidden');
+    btn.className   = 'flex-shrink-0 text-xs font-bold px-4 py-2 rounded-xl transition-colors bg-orange-200 text-orange-800 hover:bg-orange-300';
+  }
+}
+
+function refreshBL() {
+  saveBL();
+  const n = BL.length;
+  document.getElementById('blCount').textContent   = n;
+  document.getElementById('navBLCnt').textContent  = n;
+  document.getElementById('navBLBadge').classList.toggle('hidden', n === 0);
+  const blBadge = document.getElementById('blListBadge');
+  if (blBadge) {
+    blBadge.textContent = n + '명';
+    blBadge.classList.toggle('hidden', n === 0);
+  }
+  updateBLStatus();
+
+  const tbody = document.getElementById('blBody');
+  if (!n) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-sm text-gray-300">등록된 블랙리스트가 없습니다.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = BL.map((b, i) => `
+    <tr class="border-b border-gray-50 hover:bg-gray-50">
+      <td class="px-4 py-3 font-medium text-gray-800">${esc(b.name  || '–')}</td>
+      <td class="px-4 py-3 text-gray-600">${esc(b.phone   || '–')}</td>
+      <td class="px-4 py-3 text-gray-500 text-xs max-w-xs truncate" title="${esc(b.address||'')}">${esc(b.address || '–')}</td>
+      <td class="px-4 py-3 text-xs text-gray-400">${esc(b.reason || '')}</td>
+      <td class="px-4 py-3 text-right">
+        <div class="flex items-center justify-end gap-2">
+          <button onclick="editBL(${i})" class="text-gray-300 hover:text-amber-500 transition-colors text-sm" title="수정">✏️</button>
+          <button onclick="removeBL(${i})" class="text-gray-300 hover:text-red-500 transition-colors" title="삭제">✕</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+refreshBL();
+
+/* 수정 모드 인덱스 (-1 = 추가 모드) */
+let editingBLIdx = -1;
+
+function addBLManual() {
+  const name   = document.getElementById('inName').value.trim();
+  const phone  = document.getElementById('inPhone').value.trim();
+  const addr   = document.getElementById('inAddr').value.trim();
+  const reason = document.getElementById('inReason').value.trim();
+  if (!name && !phone && !addr) { alert('이름, 연락처, 주소 중 하나 이상 입력해주세요.'); return; }
+
+  if (editingBLIdx >= 0) {
+    /* ── 수정 모드: 기존 항목 업데이트 ── */
+    BL[editingBLIdx] = { name, phone, address: addr, reason: reason || '직접 수정' };
+    cancelEdit();
+    refreshBL();
+    toast('✅ 블랙리스트가 수정됐습니다.');
+    return;
+  }
+
+  /* ── 추가 모드: 중복 체크 후 삽입 ── */
+  const dup = BL.some(b =>
+    (phone && normPhone(b.phone) && normPhone(b.phone) === normPhone(phone)) ||
+    (addr  && normAddr(b.address) && normAddr(b.address) === normAddr(addr))
+  );
+  if (dup) { toast('⚠️ 이미 등록된 고객입니다.'); return; }
+
+  BL.push({ name, phone, address: addr, reason: reason || '직접 입력' });
+  ['inName','inPhone','inAddr','inReason'].forEach(id => document.getElementById(id).value = '');
+  refreshBL();
+  toast('✅ 블랙리스트에 추가됐습니다.');
+}
+
+/* 수정 버튼 클릭 → 폼에 기존 데이터 로드 */
+function editBL(i) {
+  const b = BL[i];
+  if (!b) return;
+  editingBLIdx = i;
+  document.getElementById('inName').value   = b.name    || '';
+  document.getElementById('inPhone').value  = b.phone   || '';
+  document.getElementById('inAddr').value   = b.address || '';
+  document.getElementById('inReason').value = b.reason  || '';
+  document.getElementById('editModeBanner').classList.remove('hidden');
+  document.getElementById('blSubmitBtn').textContent = '✅ 수정 내용 저장';
+  document.getElementById('blSubmitBtn').classList.replace('bg-primary', 'bg-amber-500');
+  // 폼으로 스크롤
+  document.getElementById('inName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('inName').focus();
+}
+
+/* 수정 취소 → 폼 초기화 */
+function cancelEdit() {
+  editingBLIdx = -1;
+  ['inName','inPhone','inAddr','inReason'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('editModeBanner').classList.add('hidden');
+  const btn = document.getElementById('blSubmitBtn');
+  btn.textContent = '+ 블랙리스트에 추가';
+  btn.classList.replace('bg-amber-500', 'bg-primary');
+}
+
+function removeBL(i) {
+  if (editingBLIdx === i) cancelEdit();  // 수정 중인 항목 삭제 시 편집 모드 해제
+  BL.splice(i, 1);
+  refreshBL();
+}
+
+function clearBL() {
+  if (!BL.length || !confirm('블랙리스트 전체를 삭제할까요?')) return;
+  BL = [];
+  try { localStorage.removeItem(LS_KEY); } catch(e) {}
+  refreshBL();
+}
+
+function loadBLFile(file) {
+  if (!file) return;
+  parseFile(file, rows => {
+    let added = 0;
+    rows.forEach(row => {
+      const name   = pickCol(row, '이름','성명','구매자','name','수령인');
+      const phone  = pickCol(row, '연락처','전화','휴대폰','phone','mobile');
+      const addr   = pickCol(row, '주소','배송지','수령인주소','address');
+      const reason = pickCol(row, '차단사유','사유','reason') || '엑셀 등록';
+      if (!name && !phone && !addr) return;
+      const dup = phone && BL.some(b => normPhone(b.phone) === normPhone(phone));
+      if (!dup) { BL.push({ name, phone, address: addr, reason }); added++; }
+    });
+    refreshBL();
+    showInlineMsg('blMsg', `✅ ${added}명 등록 완료 (중복 ${rows.length - added}건 제외)`);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   주문서 파일 관리
+══════════════════════════════════════════════════════════════ */
+let orderFileList = [];   // [{ file, name, platform }]
+
+function onOrderFilesSelect(e) {
+  [...e.target.files].forEach(addOrderFile);
+  e.target.value = ''; // 같은 파일 재선택 허용
+}
+
+function addOrderFile(file) {
+  if (orderFileList.find(f => f.name === file.name)) {
+    toast(`⚠️ '${file.name}'은 이미 추가됐습니다.`); return;
+  }
+  orderFileList.push({ file, name: file.name, platform: '감지 중…' });
+  renderFileChips();
+  updateScanBtn();
+  // 비동기로 플랫폼 미리 감지
+  parseFile(file, rows => {
+    const entry = orderFileList.find(f => f.name === file.name);
+    if (entry && rows.length > 0) {
+      entry.platform = detectPlatform(Object.keys(rows[0]));
+      renderFileChips();
+    }
+  });
+}
+
+function removeOrderFile(name) {
+  orderFileList = orderFileList.filter(f => f.name !== name);
+  renderFileChips();
+  updateScanBtn();
+}
+
+const platStyle = {
+  '스마트스토어': 'bg-blue-100 text-blue-700',
+  '자사몰':       'bg-purple-100 text-purple-700',
+  '기타':         'bg-gray-100 text-gray-600',
+  '감지 중…':     'bg-gray-100 text-gray-400',
+};
+
+function renderFileChips() {
+  const el = document.getElementById('fileChips');
+  if (!orderFileList.length) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = orderFileList.map(f => {
+    const cls = platStyle[f.platform] || platStyle['기타'];
+    return `<span class="inline-flex items-center gap-1.5 ${cls} px-3 py-1.5 rounded-full text-xs font-semibold">
+      📄 ${esc(f.name)} <span class="opacity-60">[${esc(f.platform)}]</span>
+      <button onclick="removeOrderFile('${esc(f.name).replace(/'/g,"\\'")}')"
+        class="ml-1 hover:opacity-60 font-bold leading-none">✕</button>
+    </span>`;
+  }).join('');
+}
+
+function updateScanBtn() {
+  document.getElementById('scanBtn').disabled = orderFileList.length === 0;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   스캔 엔진 (O(N) HashMap)
+
+   탐지 우선순위
+   1. bl_buyer    — 구매자 연락처가 BL에 있음
+   2. bl_recipient — 수령인 연락처 or 수령인 주소가 BL에 있음
+   3. pattern     — 동일 수령인 연락처/주소가 다채널 합산 5건 이상
+   4. quantity    — 주문 수량 ≥ 사용자 설정 임계값
+
+   구조: BL HashMap O(BL) + 빈도 HashMap O(N) + 탐지 O(N) = O(N)
+══════════════════════════════════════════════════════════════ */
+let scanRows   = [];
+
+/* ══ 주문 이력 풀 ══
+   historyPhoneMap: { normPhone → count }  — 과거 주문 전화번호 빈도
+   historyFiles:   업로드된 파일 정보 목록  */
+let historyPhoneMap = {};
+let historyFilesMeta = [];  // [{ name, orderCount, suspectCount }]
+
+function getHistoryThreshold() {
+  return parseInt(document.getElementById('historyThreshold')?.value) || 3;
+}
+
+function loadHistoryFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb  = XLSX.read(e.target.result, { type: 'binary' });
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!raw.length) { toast('⚠️ ' + file.name + ': 데이터가 없습니다.'); return; }
+
+      const keys     = Object.keys(raw[0]);
+      const platform = detectPlatform(keys);
+      let orderCount = 0;
+
+      raw.forEach(row => {
+        const o = normalizeOrder(row, platform);
+        const bpk = normPhone(o.buyerPhone);
+        const rpk = normPhone(o.recipientPhone);
+        if (bpk) { historyPhoneMap[bpk] = (historyPhoneMap[bpk] || 0) + 1; }
+        if (rpk && rpk !== bpk) { historyPhoneMap[rpk] = (historyPhoneMap[rpk] || 0) + 1; }
+        orderCount++;
+      });
+
+      const thr = getHistoryThreshold();
+      const suspectCount = Object.values(historyPhoneMap).filter(v => v >= thr).length;
+      historyFilesMeta.push({ name: file.name, orderCount, suspectCount });
+      renderHistoryStatus();
+      toast('✅ 이력 파일 추가: ' + file.name);
+    } catch(err) {
+      toast('⚠️ ' + file.name + ' 파싱 오류: ' + err.message);
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function renderHistoryStatus() {
+  const thr = getHistoryThreshold();
+  const suspects = Object.entries(historyPhoneMap).filter(([,v]) => v >= thr);
+  const n = suspects.length;
+
+  /* 헤더 카운트 */
+  const hc = document.getElementById('historyCount');
+  if (hc) hc.textContent = n;
+
+  /* 파일 목록 */
+  const listWrap  = document.getElementById('historyFileList');
+  const listItems = document.getElementById('historyFileItems');
+  if (listWrap && historyFilesMeta.length) {
+    listWrap.classList.remove('hidden');
+    listItems.innerHTML = historyFilesMeta.map((f, i) => `
+      <div class="flex items-center gap-2 text-xs bg-white border border-indigo-100 rounded-xl px-3 py-2">
+        <span class="text-indigo-400">📄</span>
+        <span class="font-semibold text-gray-700 flex-1 truncate">${esc(f.name)}</span>
+        <span class="text-gray-400">${f.orderCount.toLocaleString()}건</span>
+        <button onclick="removeHistoryFile(${i})" class="text-gray-300 hover:text-red-500 transition-colors ml-1">✕</button>
+      </div>`).join('');
+  } else if (listWrap) {
+    listWrap.classList.add('hidden');
+  }
+
+  /* 요주의 번호 요약 */
+  const result    = document.getElementById('historyResult');
+  const cntEl     = document.getElementById('historySuspectCount');
+  const listEl    = document.getElementById('historySuspectList');
+  if (result && n > 0) {
+    result.classList.remove('hidden');
+    if (cntEl) cntEl.textContent = n;
+    if (listEl) {
+      /* 빈도 높은 순 상위 30개만 표시 */
+      const top = suspects.sort((a,b) => b[1]-a[1]).slice(0, 30);
+      listEl.innerHTML = top.map(([phone, cnt]) =>
+        `<span class="text-xs bg-indigo-100 text-indigo-700 rounded-lg px-2 py-1 font-mono">
+          ${esc(phone)} <span class="font-bold">(${cnt}회)</span>
+        </span>`).join('');
+    }
+  } else if (result) {
+    result.classList.add('hidden');
+  }
+}
+
+function removeHistoryFile(idx) {
+  /* 파일 단위 제거: 해당 파일 기여분을 정확히 빼는 건 복잡하므로 전체 초기화 후 재집계 안내 */
+  historyFilesMeta.splice(idx, 1);
+  if (!historyFilesMeta.length) {
+    historyPhoneMap = {};
+    renderHistoryStatus();
+    toast('이력 파일이 모두 제거됐습니다.');
+  } else {
+    toast('⚠️ 정확한 재집계를 위해 이력 초기화 후 다시 업로드해주세요.');
+    historyFilesMeta = [];
+    historyPhoneMap  = {};
+    renderHistoryStatus();
+  }
+}
+
+function clearHistory() {
+  historyPhoneMap  = {};
+  historyFilesMeta = [];
+  renderHistoryStatus();
+  const hc = document.getElementById('historyCount');
+  if (hc) hc.textContent = '0';
+  toast('이력 데이터가 초기화됐습니다.');
+}
+let totalCount = 0;
+
+function runScan() {
+  if (!orderFileList.length) return;
+  const threshold  = parseInt(document.getElementById('qtyThreshold').value) || 4;
+  const snapFiles  = [...orderFileList];
+  let allOrders    = [];
+  let parsedCount  = 0;
+
+  document.getElementById('scanLoading').classList.remove('hidden');
+  document.getElementById('scanBtn').disabled = true;
+
+  snapFiles.forEach(({ file }) => {
+    parseFile(file, rows => {
+      // 파싱 시점에 플랫폼 재감지 (칩 표시와 별개로 정확도 확보)
+      const platform = rows.length > 0 ? detectPlatform(Object.keys(rows[0])) : '기타';
+      allOrders = allOrders.concat(rows.map(r => normalizeOrder(r, platform)));
+      parsedCount++;
+      if (parsedCount === snapFiles.length) {
+        // 모든 파일 파싱 완료 → 스캔 실행
+        setTimeout(() => doScan(allOrders, threshold, snapFiles.length), 30);
+      }
+    });
+  });
+}
+
+function doScan(orders, threshold, channelCount) {
+  try {
+    const t0 = performance.now();
+
+    /* ① BL HashMap 구축 O(BL) */
+    const threshold_pattern = 5; /* 패턴 탐지 기준 건수 */
+    const blPhoneMap = {}, blAddrMap = {};
+    BL.forEach(b => {
+      const pk = normPhone(b.phone);
+      const ak = normAddr(b.address);
+      if (pk) blPhoneMap[pk] = b;
+      if (ak) blAddrMap[ak]  = b;
+    });
+
+    /* ② 타겟 옵션 키워드 파싱 */
+    const targetRaw = (document.getElementById('targetKeywords')?.value || '').trim();
+    const targetKws = targetRaw
+      ? targetRaw.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    /* 타겟 주문 여부 판별 함수 */
+    const isTarget = o => {
+      if (!targetKws.length) return false;
+      const optStr = [o.productName, o.option].join(' ');
+      return targetKws.some(kw => optStr.includes(kw));
+    };
+
+    /* ② 다채널 수령인 빈도 HashMap 구축 O(N) */
+    const recPhoneFreq = {}, recAddrFreq = {};
+    orders.forEach(o => {
+      const rk = normPhone(o.recipientPhone);
+      const ak = normAddr(o.recipientAddress);
+      if (rk) recPhoneFreq[rk] = (recPhoneFreq[rk] || 0) + 1;
+      if (ak) recAddrFreq[ak]  = (recAddrFreq[ak]  || 0) + 1;
+    });
+
+    /* ②-b 타겟 옵션 주문 전용 빈도 맵 (연락처 / 주소) */
+    /* targetPhoneFreq: normPhone → 타겟 주문 건수
+       targetAddrPhones: normAddr → Set<normPhone>  (다계정 감지용) */
+    const targetPhoneFreq = {}, targetAddrPhones = {};
+    if (targetKws.length) {
+      orders.forEach(o => {
+        if (!isTarget(o)) return;
+        const rpk = normPhone(o.recipientPhone) || normPhone(o.buyerPhone);
+        const bpk = normPhone(o.buyerPhone);
+        const rak = normAddr(o.recipientAddress);
+        /* 연락처 빈도 (구매자+수령인 모두 체크) */
+        [rpk, bpk].filter(Boolean).forEach(pk => {
+          targetPhoneFreq[pk] = (targetPhoneFreq[pk] || 0) + 1;
+        });
+        /* 주소별 연락처 집합 */
+        if (rak) {
+          if (!targetAddrPhones[rak]) targetAddrPhones[rak] = new Set();
+          if (rpk) targetAddrPhones[rak].add(rpk);
+          if (bpk) targetAddrPhones[rak].add(bpk);
+        }
+      });
+    }
+
+    /* ③ 탐지 O(N) */
+    scanRows = [];
+    orders.forEach(o => {
+      const bpk = normPhone(o.buyerPhone);
+      const rpk = normPhone(o.recipientPhone);
+      const rak = normAddr(o.recipientAddress);
+      const reasons = [];
+      let type = null;
+
+      /* 우선순위 1: BL — 구매자 연락처 */
+      if (bpk && blPhoneMap[bpk]) {
+        type = 'bl_buyer';
+        const bl = blPhoneMap[bpk];
+        reasons.push(`구매자 연락처 일치 (${o.buyerPhone})`);
+        if (bl.reason) reasons.push(`[사유: ${bl.reason}]`);
+      }
+
+      /* 우선순위 2: BL — 수령인 연락처 or 수령인 주소 */
+      if (!type) {
+        const hitRP = rpk && blPhoneMap[rpk];
+        const hitRA = rak && blAddrMap[rak];
+        if (hitRP || hitRA) {
+          type = 'bl_recipient';
+          if (hitRP) {
+            reasons.push(`수령인 연락처 일치 (${o.recipientPhone})`);
+            if (hitRP.reason) reasons.push(`[사유: ${hitRP.reason}]`);
+          }
+          if (hitRA) {
+            reasons.push('수령인 주소 일치');
+            if (hitRA.reason) reasons.push(`[사유: ${hitRA.reason}]`);
+          }
+        }
+      }
+
+      /* 우선순위 3: 이력 요주의 — 과거 주문 이력에서 N회 이상 반복 */
+      if (!type) {
+        const histThr = getHistoryThreshold();
+        const bphCnt  = historyPhoneMap[bpk] || 0;
+        const rphCnt  = historyPhoneMap[rpk]  || 0;
+        if (bpk && bphCnt >= histThr) {
+          reasons.push(`🗂 구매자 이력 ${bphCnt}회 반복 (${o.buyerPhone})`);
+          type = 'history';
+        } else if (rpk && rphCnt >= histThr) {
+          reasons.push(`🗂 수령인 이력 ${rphCnt}회 반복 (${o.recipientPhone})`);
+          type = 'history';
+        }
+      }
+
+      /* 우선순위 4: 타겟 옵션 탐지 */
+      if (!type && targetKws.length && isTarget(o)) {
+        const rpk = normPhone(o.recipientPhone) || normPhone(o.buyerPhone);
+        const bpk = normPhone(o.buyerPhone);
+        const rak = normAddr(o.recipientAddress);
+
+        /* 패턴 A: 동일 연락처로 타겟 옵션 2건 이상 */
+        const maxPhone = Math.max(
+          rpk ? (targetPhoneFreq[rpk] || 0) : 0,
+          bpk ? (targetPhoneFreq[bpk] || 0) : 0
+        );
+        if (maxPhone >= 2) {
+          const ph = (rpk && (targetPhoneFreq[rpk]||0) >= (bpk ? (targetPhoneFreq[bpk]||0) : 0))
+            ? o.recipientPhone : o.buyerPhone;
+          reasons.push(`🎯 타겟 옵션(${targetKws.join('/')}) 동일 연락처 ${maxPhone}건 반복 (${ph})`);
+          type = 'target_dup';
+        }
+
+        /* 패턴 B: 다른 연락처인데 동일 주소로 타겟 옵션 2건 이상 (창고 집결) */
+        if (!type && rak) {
+          const phonesAtAddr = targetAddrPhones[rak];
+          if (phonesAtAddr && phonesAtAddr.size >= 2) {
+            const addrPreview = o.recipientAddress.length > 20
+              ? o.recipientAddress.slice(0, 20) + '…' : o.recipientAddress;
+            reasons.push(`🏭 타겟 옵션 창고 집결 의심 — 동일 주소 ${phonesAtAddr.size}개 계정 (${addrPreview})`);
+            type = 'target_addr';
+          }
+        }
+      }
+
+      /* 우선순위 5: 패턴 탐지 — 다채널 합산 5건 이상 */
+      if (!type) {
+        const pc = recPhoneFreq[rpk] || 0;
+        const ac = recAddrFreq[rak]  || 0;
+        if (rpk && pc >= threshold_pattern) {
+          reasons.push(`📞 수령인 연락처 ${pc}건 반복 (${o.recipientPhone})`);
+          type = 'pattern';
+        }
+        if (rak && ac >= threshold_pattern) {
+          /* 주소가 너무 길면 앞 20자만 표시 */
+          const addrPreview = o.recipientAddress.length > 20
+            ? o.recipientAddress.slice(0, 20) + '…'
+            : o.recipientAddress;
+          reasons.push(`📍 수령인 주소 ${ac}건 반복 (${addrPreview})`);
+          type = 'pattern';
+        }
+      }
+
+      /* 우선순위 4: 수량 초과 */
+      if (!type && o.quantity >= threshold) {
+        type = 'quantity';
+        reasons.push(`대량 구매 ${o.quantity}개 (기준 ${threshold}개 이상)`);
+      }
+
+      if (!type) return;  // 정상 주문
+
+      scanRows.push({ ...o, type, reason: reasons.join(' / '), checked: false });
+    });
+
+    const elapsed = (performance.now() - t0).toFixed(0);
+    totalCount = orders.length;
+
+    /* 통계 업데이트 */
+    const cnt = t => scanRows.filter(r => r.type === t).length;
+    document.getElementById('stTotal').textContent    = orders.length.toLocaleString();
+    document.getElementById('stBlBuyer').textContent   = cnt('bl_buyer').toLocaleString();
+    document.getElementById('stHistory').textContent    = cnt('history').toLocaleString();
+    document.getElementById('stTarget').textContent    = (cnt('target_dup') + cnt('target_addr')).toLocaleString();
+    document.getElementById('stBlRecip').textContent  = cnt('bl_recipient').toLocaleString();
+    document.getElementById('stPat').textContent      = cnt('pattern').toLocaleString();
+    document.getElementById('stQty').textContent      = cnt('quantity').toLocaleString();
+
+    document.getElementById('resultDesc').textContent =
+      `총 ${orders.length.toLocaleString()}건 · ${channelCount}개 채널 분석 완료 (${elapsed}ms) · 의심 주문 ${scanRows.length}건 탐지`;
+
+    const badge = document.getElementById('resultBadge');
+    if (scanRows.length) {
+      badge.textContent = `${scanRows.length}건 탐지`;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+
+    document.getElementById('resultSection').classList.remove('hidden');
+    document.getElementById('filterSel').value = 'all';
+    renderResult();
+    document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+
+  } finally {
+    document.getElementById('scanLoading').classList.add('hidden');
+    document.getElementById('scanBtn').disabled = false;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   결과 렌더링
+══════════════════════════════════════════════════════════════ */
+document.getElementById('filterSel').addEventListener('change', () => {
+  if (scanRows.length) renderResult();
+});
+
+const TYPE_INFO = {
+  bl_buyer:     { label: '🔴 BL(구매자)',  cls: 'bg-red-100 text-red-700' },
+  history:      { label: '🔵 이력 요주의',    cls: 'bg-indigo-100 text-indigo-700' },
+  target_dup:   { label: '🎯 타겟 중복구매',  cls: 'bg-rose-100 text-rose-700' },
+  target_addr:  { label: '🏭 창고 집결 의심', cls: 'bg-red-100 text-red-800' },
+  bl_recipient: { label: '🟠 BL(수령인)',  cls: 'bg-orange-100 text-orange-700' },
+  pattern:      { label: '📊 패턴 탐지',   cls: 'bg-accent/10 text-accent' },
+  quantity:     { label: '📦 수량 초과',   cls: 'bg-amber-100 text-amber-700' },
+};
+const PLAT_CLS = {
+  '스마트스토어': 'bg-blue-100 text-blue-700',
+  '아임웹':       'bg-pink-100 text-pink-700',
+  '자사몰':       'bg-purple-100 text-purple-700',
+};
+
+function renderResult() {
+  const f    = document.getElementById('filterSel').value;
+  const list = f === 'all' ? scanRows : scanRows.filter(r => r.type === f);
+  const qtyT = parseInt(document.getElementById('qtyThreshold').value) || 4;
+
+  const tbody = document.getElementById('resultBody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="13" class="py-14 text-center font-semibold text-accent">✅ 해당 유형의 의심 주문이 없습니다.</td></tr>`;
+    updateCheckedInfo();
+    return;
+  }
+
+  tbody.innerHTML = list.map(r => {
+    const si  = scanRows.indexOf(r);
+    const ti  = TYPE_INFO[r.type] || { label: r.type, cls: 'bg-gray-100 text-gray-600' };
+    const pc  = PLAT_CLS[r.platform] || 'bg-gray-100 text-gray-500';
+    const rowCls = r.checked
+      ? 'row-cancel border-b border-red-100'
+      : 'border-b border-gray-100 hover:bg-gray-50';
+    const qtyHi = r.quantity >= qtyT ? 'font-bold text-amber-600' : 'text-gray-600';
+    const optTxt = [r.productName, r.option].filter(Boolean).join(' / ');
+
+    return `
+    <tr class="${rowCls}">
+      <td class="px-4 py-3.5 text-center">
+        <input type="checkbox" ${r.checked ? 'checked' : ''}
+          onchange="toggleCheck(${si}, this.checked)"
+          class="w-4 h-4 rounded cursor-pointer" style="accent-color:#dc2626">
+      </td>
+      <td class="px-4 py-3.5">
+        <span class="text-xs font-semibold ${pc} px-2 py-0.5 rounded-full whitespace-nowrap">${esc(r.platform)}</span>
+      </td>
+      <td class="px-4 py-3.5 font-mono text-xs text-gray-400 whitespace-nowrap">${esc(r.orderId)}</td>
+      <td class="px-4 py-3.5 font-semibold text-primary whitespace-nowrap">${esc(r.buyerName)}</td>
+      <td class="px-4 py-3.5 text-gray-700 whitespace-nowrap">${esc(r.buyerPhone)}</td>
+      <td class="px-4 py-3.5 text-gray-700 whitespace-nowrap">${esc(r.recipientName)}</td>
+      <td class="px-4 py-3.5 text-gray-700 whitespace-nowrap">${esc(r.recipientPhone)}</td>
+      <td class="px-4 py-3.5 text-gray-500 text-xs max-w-xs truncate" title="${esc(r.recipientAddress)}">${esc(r.recipientAddress)}</td>
+      <td class="px-4 py-3.5 text-xs text-gray-500 max-w-xs truncate" title="${esc(optTxt)}">${esc(optTxt) || '–'}</td>
+      <td class="px-4 py-3.5 text-center ${qtyHi}">${r.quantity}</td>
+      <td class="px-4 py-3.5 whitespace-nowrap">
+        <span class="text-xs font-semibold ${ti.cls} px-2.5 py-1 rounded-full">${ti.label}</span>
+      </td>
+      <td class="px-4 py-3.5 text-xs text-gray-600 max-w-xs">
+        ${r.reason.split(' / ').map(seg => {
+          const isPhone = seg.includes('📞');
+          const isAddr  = seg.includes('📍');
+          const isBL    = seg.includes('일치') || seg.includes('사유');
+          const cls = isPhone ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                    : isAddr  ? 'bg-purple-50 text-purple-700 border border-purple-100'
+                    : isBL    ? 'bg-red-50 text-red-700 border border-red-100'
+                    :           'bg-amber-50 text-amber-700 border border-amber-100';
+          return `<span class="inline-block ${cls} rounded-md px-1.5 py-0.5 mb-0.5 leading-tight">${esc(seg)}</span>`;
+        }).join(' ')}
+      </td>
+      <td class="px-4 py-3.5 text-center">
+        <button onclick="addToBL(${si})"
+          class="text-xs font-semibold text-primary border border-gray-200
+                 hover:bg-primary hover:text-white px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap">
+          + BL
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  updateCheckedInfo();
+  syncCheckAll();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   체크박스 & 취소 목록 내보내기
+══════════════════════════════════════════════════════════════ */
+function toggleCheck(idx, checked) {
+  if (scanRows[idx]) scanRows[idx].checked = checked;
+  updateCheckedInfo();
+  syncCheckAll();
+}
+
+function toggleCheckAll(checked) {
+  const f = document.getElementById('filterSel').value;
+  scanRows.forEach(r => { if (f === 'all' || r.type === f) r.checked = checked; });
+  renderResult();
+}
+
+function syncCheckAll() {
+  const f       = document.getElementById('filterSel').value;
+  const visible = f === 'all' ? scanRows : scanRows.filter(r => r.type === f);
+  const ca      = document.getElementById('checkAll');
+  if (!visible.length) { ca.checked = false; ca.indeterminate = false; return; }
+  const allChk  = visible.every(r => r.checked);
+  const anyChk  = visible.some(r => r.checked);
+  ca.checked       = allChk;
+  ca.indeterminate = !allChk && anyChk;
+}
+
+function updateCheckedInfo() {
+  const n = scanRows.filter(r => r.checked).length;
+  document.getElementById('checkedCountTxt').textContent =
+    n ? `${n}건 선택됨 → 오른쪽 상단 "취소 목록 내보내기" 버튼으로 추출하세요` : '';
+}
+
+function exportCancelList() {
+  const targets = scanRows.filter(r => r.checked);
+  if (!targets.length) {
+    toast('⚠️ 취소할 주문을 먼저 체크박스로 선택하세요.');
+    return;
+  }
+  const typeLabel = {
+    bl_buyer: 'BL일치(구매자)', bl_recipient: 'BL일치(수령인)',
+    pattern: '패턴탐지', quantity: '수량초과',
+  };
+  const hd   = ['플랫폼','주문번호','구매자명','구매자연락처',
+                 '수령인명','수령인연락처','수령인주소',
+                 '상품명','옵션','수량','탐지유형','차단사유'];
+  const body = targets.map(r => [
+    r.platform, r.orderId, r.buyerName, r.buyerPhone,
+    r.recipientName, r.recipientPhone, r.recipientAddress,
+    r.productName, r.option, r.quantity,
+    typeLabel[r.type] || r.type, r.reason,
+  ]);
+  const csv = '﻿' + [hd, ...body].map(row =>
+    row.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')
+  ).join('\r\n');
+  const a = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  a.download = '취소대상_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  toast(`✅ ${targets.length}건 취소 목록 다운로드 완료`);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   원클릭 BL 등록 (결과 → 블랙리스트)
+══════════════════════════════════════════════════════════════ */
+function addToBL(idx) {
+  const r = scanRows[idx];
+  if (!r) return;
+  const dup = BL.some(b =>
+    (r.buyerPhone      && normPhone(b.phone) === normPhone(r.buyerPhone))      ||
+    (r.recipientPhone  && normPhone(b.phone) === normPhone(r.recipientPhone))  ||
+    (r.recipientAddress && normAddr(b.address) === normAddr(r.recipientAddress))
+  );
+  if (dup) { toast('⚠️ 이미 블랙리스트에 등록된 고객입니다.'); return; }
+  BL.push({
+    name:    r.recipientName || r.buyerName,
+    phone:   r.recipientPhone || r.buyerPhone,
+    address: r.recipientAddress,
+    reason:  `결과에서 추가 (${TYPE_INFO[r.type]?.label || r.type})`,
+  });
+  refreshBL();
+  toast(`✅ ${r.recipientName || r.buyerName || r.buyerPhone} 블랙리스트 추가 완료`);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   파일 파싱 공통
+══════════════════════════════════════════════════════════════ */
+function parseFile(file, callback) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb   = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      callback(rows);
+    } catch(err) { alert(`'${file.name}' 파일 파싱 오류: ${err.message}`); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   드래그 앤 드롭
+══════════════════════════════════════════════════════════════ */
+function dragOver(e, id) {
+  e.preventDefault();
+  document.getElementById(id).classList.add('drag-over');
+}
+function dragLeave(id) {
+  document.getElementById(id).classList.remove('drag-over');
+}
+function onDrop(e, type) {
+  e.preventDefault();
+  const dropId = type === 'bl' ? 'blDrop'
+               : type === 'ocr'     ? 'ocrDrop'
+               : type === 'history' ? 'historyDrop'
+               : 'orderDrop';
+  document.getElementById(dropId)?.classList.remove('drag-over');
+  const files = [...e.dataTransfer.files];
+  if      (type === 'bl')      { loadBLFile(files[0]); }
+  else if (type === 'history') { files.forEach(loadHistoryFile); }
+  else if (type === 'ocr')     { runOCR(files[0]); }
+  else                         { files.forEach(addOrderFile); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   이미지 OCR — Tesseract.js (지연 로드)
+
+   흐름:
+   1. 이미지 업로드
+   2. Tesseract.js 동적 로드 (최초 1회)
+   3. 한국어+영어 OCR 실행 (진행률 표시)
+   4. 전화번호 패턴으로 추출 → 직전 한국어 문자열을 이름으로 매핑
+   5. 편집 가능한 미리보기 테이블 표시
+   6. 확인 → BL 등록
+══════════════════════════════════════════════════════════════ */
+let _tesseractReady = false;
+let _ocrRows = [];   // [{ id, name, phone }]
+
+/* Tesseract.js 동적 로드 (페이지 초기 로드 지연 방지) */
+function loadTesseract() {
+  return new Promise((resolve, reject) => {
+    if (_tesseractReady) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/tesseract.js@4/dist/tesseract.min.js';
+    s.onload  = () => { _tesseractReady = true; resolve(); };
+    s.onerror = () => reject(new Error('Tesseract.js 로드 실패 — 인터넷 연결을 확인하세요.'));
+    document.head.appendChild(s);
+  });
+}
+
+async function runOCR(file) {
+  if (!file) return;
+  document.getElementById('ocrLoading').classList.remove('hidden');
+  document.getElementById('ocrPreview').classList.add('hidden');
+  document.getElementById('ocrBar').style.width = '0%';
+  document.getElementById('ocrStatus').textContent = 'Tesseract.js 로딩 중...';
+
+  try {
+    await loadTesseract();
+
+    const { data: { text } } = await Tesseract.recognize(file, 'kor+eng', {
+      workerPath : 'https://unpkg.com/tesseract.js@4/dist/worker.min.js',
+      langPath   : 'https://tessdata.projectnaptha.com/4.0.0',
+      corePath   : 'https://unpkg.com/tesseract.js-core@4/tesseract-core-simd.wasm.js',
+      logger: ({ status, progress }) => {
+        const pct = Math.round((progress || 0) * 100);
+        document.getElementById('ocrBar').style.width = pct + '%';
+        document.getElementById('ocrStatus').textContent =
+          status === 'recognizing text'            ? `텍스트 인식 중... ${pct}%` :
+          status === 'loading language traineddata' ? `한국어 데이터 다운로드 중... ${pct}%` :
+          status === 'initializing tesseract'       ? '엔진 초기화 중...' :
+          status || '처리 중...';
+      }
+    });
+
+    _ocrRows = parseOCRText(text);
+    renderOCRPreview();
+
+  } catch(err) {
+    alert('OCR 오류: ' + err.message);
+  } finally {
+    document.getElementById('ocrLoading').classList.add('hidden');
+    document.getElementById('ocrFile').value = '';
+  }
+}
+
+/* 추출 텍스트 파싱: 전화번호 패턴 검출 → 직전 한국어 문자열을 이름으로 */
+function parseOCRText(text) {
+  const PHONE_RE = /0\d{1,2}[\s\-]?\d{3,4}[\s\-]?\d{4}/g;
+  const rows = [];
+
+  /* 1) 줄 단위로 전화번호 탐색 */
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  lines.forEach(line => {
+    let m;
+    PHONE_RE.lastIndex = 0;
+    while ((m = PHONE_RE.exec(line)) !== null) {
+      const rawPhone = m[0];
+      const before   = line.slice(0, m.index).trim();
+      /* 이름: 전화번호 앞 텍스트에서 한글·슬래시만 추출 → 공백 제거로 흩어진 글자 합치기
+         예) "장 지 선" → "장지선" / "전용빈 / 이운순" → "전용빈/이운순" */
+      const korOnly  = before.replace(/[^가-힣\/]/g, '');
+      const name     = korOnly.length >= 2 ? korOnly : '';
+      const phone    = rawPhone.replace(/\s/g, '').replace(/(\d{3,4})(\d{4})$/, '$1-$2')
+                               .replace(/^(010|011|016|017|018|019)(\d)/, '$1-$2');
+      rows.push({ id: Math.random().toString(36).slice(2), name, phone, address: '' });
+    }
+  });
+
+  /* 2) 줄 단위에서 놓친 경우 대비: 전체 텍스트에서 한글이름+전화번호 패턴으로 재탐색 */
+  const foundPhones = new Set(rows.map(r => r.phone.replace(/\D/g, '')));
+  const PAIR_RE = /([가-힣]{2,6}(?:\s*\/\s*[가-힣]{2,6})?)\s+(0\d{1,2}[\s\-]?\d{3,4}[\s\-]?\d{4})/g;
+  let p;
+  while ((p = PAIR_RE.exec(text)) !== null) {
+    const rawP = p[2].replace(/\s/g, '').replace(/(\d{3,4})(\d{4})$/, '$1-$2')
+                      .replace(/^(010|011|016|017|018|019)(\d)/, '$1-$2');
+    const digits = rawP.replace(/\D/g, '');
+    if (!foundPhones.has(digits)) {
+      const name = p[1].replace(/\s/g, '');
+      rows.push({ id: Math.random().toString(36).slice(2), name, phone: rawP });
+      foundPhones.add(digits);
+    }
+  }
+
+  return rows;
+}
+
+function renderOCRPreview() {
+  const preview = document.getElementById('ocrPreview');
+  if (!_ocrRows.length) {
+    alert('전화번호를 인식하지 못했습니다.\n이미지가 선명한지, 텍스트가 포함됐는지 확인해주세요.');
+    return;
+  }
+  preview.classList.remove('hidden');
+  document.getElementById('ocrCountBadge').textContent = _ocrRows.length + '명 추출';
+  document.getElementById('ocrConfirmBtn').textContent = `✅ ${_ocrRows.length}명 블랙리스트에 추가`;
+
+  document.getElementById('ocrBody').innerHTML = _ocrRows.map((r, i) => `
+    <tr id="ocr-${r.id}" class="border-b border-gray-50 hover:bg-gray-50">
+      <td class="px-3 py-2">
+        <input type="text" value="${esc(r.name)}" placeholder="이름"
+          oninput="_ocrRows[${i}].name=this.value"
+          class="inp-sm">
+      </td>
+      <td class="px-3 py-2">
+        <input type="text" value="${esc(r.phone)}" placeholder="연락처"
+          oninput="_ocrRows[${i}].phone=this.value"
+          class="inp-sm font-mono">
+      </td>
+      <td class="px-3 py-2">
+        <input type="text" value="${esc(r.address||'')}" placeholder="주소 (선택)"
+          oninput="_ocrRows[${i}].address=this.value"
+          class="inp-sm text-gray-500">
+      </td>
+      <td class="px-3 py-2 text-center">
+        <button onclick="removeOCRRow('${r.id}')"
+          class="text-gray-300 hover:text-red-500 transition-colors">✕</button>
+      </td>
+    </tr>`).join('');
+}
+
+function removeOCRRow(id) {
+  _ocrRows = _ocrRows.filter(r => r.id !== id);
+  renderOCRPreview();
+  if (!_ocrRows.length) document.getElementById('ocrPreview').classList.add('hidden');
+}
+
+function confirmOCR() {
+  let added = 0;
+  _ocrRows.forEach(r => {
+    if (!r.name && !r.phone) return;
+    const dup = r.phone && BL.some(b => normPhone(b.phone) === normPhone(r.phone));
+    if (!dup) {
+      BL.push({ name: r.name, phone: r.phone, address: r.address || '', reason: '이미지 OCR 등록' });
+      added++;
+    }
+  });
+  refreshBL();
+  cancelOCR();
+  toast(`✅ ${added}명 블랙리스트에 추가됐습니다.`);
+}
+
+function cancelOCR() {
+  _ocrRows = [];
+  document.getElementById('ocrPreview').classList.add('hidden');
+  document.getElementById('ocrLoading').classList.add('hidden');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   토스트 / 인라인 메시지
+══════════════════════════════════════════════════════════════ */
+let _toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+function showInlineMsg(id, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
+}
+</script>
+</body>
+</html>
